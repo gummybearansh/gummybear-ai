@@ -311,6 +311,7 @@ name = "gummybear-ai"
 version = "0.1.0"
 dependencies = [
  "dotenvy",
+ "futures-util",
  "reqwest",
  "serde",
  "serde_json",

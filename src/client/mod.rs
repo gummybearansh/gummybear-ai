@@ -1,6 +1,8 @@
 mod request_payload;
+mod response_payload;
 
 use request_payload::{NvidiaRequest, Message, ChatTemplateKwargs};
+use futures_util::StreamExt;
 
 pub async fn call_nvidia(api_key: &str){
     println!("Client received api key starting with {}", &api_key[..5]);
@@ -14,7 +16,7 @@ pub async fn call_nvidia(api_key: &str){
         messages: vec![
             Message {
                 role: "user".to_string(),
-                content: "Hello, write a short poem about a gummy bear.".to_string(),
+                content: "Hello, write a short poem about a gummy bear, in 1000 words".to_string(),
             },
         ],
         temperature: 1.0, 
@@ -24,7 +26,7 @@ pub async fn call_nvidia(api_key: &str){
             enable_thinking: true,
         },
         reasoning_budget: 1000,
-        stream: false,
+        stream: true,
     };
 
     println!("Sending post request to NVIDIA...");
@@ -32,7 +34,6 @@ pub async fn call_nvidia(api_key: &str){
     // sending the request 
     let response = client.post(url)
         .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
         .json(&payload)
         .send()
         .await;
@@ -41,9 +42,44 @@ pub async fn call_nvidia(api_key: &str){
         Ok(res) => {
             println!("Response status {}", res.status());
 
-            // grab the body asynchronously 
-            let body = res.text().await.unwrap_or_default();
-            println!("body: {}", body);
+            // get the stream of bytes from the response 
+            let mut stream = res.bytes_stream();
+
+            // loop over the chunks asynchronously 
+            while let Some(chunk_result) = stream.next().await {
+                match chunk_result {
+                    Ok(bytes) => {
+                        // print the raw chunks as they arrive 
+                        if let Ok(text) = std::str::from_utf8(&bytes){
+                            // chunks could have multiple SSE lines together separated by new line 
+                            for line in text.lines() {
+                                let line = line.trim();
+                                
+                                // skip if line is empty or the final [DONE] signal 
+                                if line.is_empty() || line == "data: [DONE]"{
+                                    continue;
+                                }
+
+                                // extract json from the line after "data: " (normal SSE structure)
+                                if let Some(json_str) = line.strip_prefix("data: "){
+                                    // deserialize into our struct 
+                                    if let Ok(chunk) = serde_json::from_str::<response_payload::ChatCompletionChunk>(json_str) {
+                                        // if content exists - print it without the new line 
+                                        if let Some(content) = chunk.choices.get(0).and_then(|c| c.delta.content.as_ref()){
+                                            print!("{}", content);
+
+                                            // flush stdout so tokens don't sit buffered in terminal 
+                                            use std::io::{self, Write};
+                                            let _ = io::stdout().flush();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => eprintln!("Error reading chunk {}", e)
+                }
+            }
         }
         Err(e) => println!("Request failed {}", e)
     }
