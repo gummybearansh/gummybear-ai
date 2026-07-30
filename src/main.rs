@@ -1,22 +1,24 @@
 // tells rust the agent module exists
 mod agent;
 mod client;
+
+pub mod config;
 pub mod error;
+
+use config::Config;
 
 #[tokio::main]
 async fn main() {
-    // loads the .env into memory
-    dotenvy::dotenv().ok();
-
-    // fetch the variable 
-    let api_key = std::env::var("NVIDIA_API_KEY");
-    let key = match api_key {
-        Ok(key) => key,
-        Err(_e) => panic!("could not load the api key")
+    let config = match Config::load() {
+        Ok (c) => c,
+        Err (e) => {
+            eprintln!("Failed to load config: {}", e);
+            std::process::exit(1);
+        }
     };
 
-    match client::call_nvidia(&key).await {
-        Ok(_) => println!("\nTask finished successfully"), 
+    match client::call_nvidia(&config.api_key).await {
+        Ok(_) => println!("\n\nTask finished successfully"), 
 
         Err (e) => {
             eprintln!("{}", e);

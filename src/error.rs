@@ -2,9 +2,12 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum HarnessError {
-   #[error("Network Request failed")] 
+    #[error("Network Request failed {0}")] 
     RequestFailed(#[from] reqwest::Error),
 
-   #[error("Failed to parse bytes to UTF-8: {0}")] 
+    #[error("Failed to parse bytes to UTF-8: {0}")] 
     ParseFailed(#[from] std::str::Utf8Error),
+
+    #[error("Unable to find API Key in .env, {0}")]
+    ApiKeyError(#[from] std::env::VarError),
 }
