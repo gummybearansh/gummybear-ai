@@ -1,6 +1,7 @@
 // tells rust the agent module exists
 mod agent;
 mod client;
+pub mod error;
 
 #[tokio::main]
 async fn main() {
@@ -14,6 +15,13 @@ async fn main() {
         Err(_e) => panic!("could not load the api key")
     };
 
-    client::call_nvidia(&key).await;
+    match client::call_nvidia(&key).await {
+        Ok(_) => println!("\nTask finished successfully"), 
 
+        Err (e) => {
+            eprintln!("{}", e);
+
+            std::process::exit(1);
+        }
+    }
 }
