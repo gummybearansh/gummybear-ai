@@ -10,4 +10,8 @@ pub enum HarnessError {
 
     #[error("Unable to find API Key in .env, {0}")]
     ApiKeyError(#[from] std::env::VarError),
+
+    
+    #[error("Error deserializing json into struct: {0}")]
+    SerdeError(#[from] serde_json::Error)
 }

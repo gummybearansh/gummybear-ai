@@ -1,9 +1,11 @@
 mod request_payload;
 mod response_payload;
+mod parser;
 
-use crate::error::HarnessError;
+use crate::{client::parser::parse_text_stream, error::HarnessError};
 use request_payload::{NvidiaRequest, Message, ChatTemplateKwargs};
 use futures_util::StreamExt;
+use std::io::Write; // trait to be in scope so that i can use the flush() method it implements
 
 pub async fn call_nvidia(api_key: &str) -> Result<(), HarnessError>{
     println!("Client received api key starting with {}", &api_key[..5]);
@@ -17,7 +19,7 @@ pub async fn call_nvidia(api_key: &str) -> Result<(), HarnessError>{
         messages: vec![
             Message {
                 role: "user".to_string(),
-                content: "Hello, write a short poem about a gummy bear, in 1000 words".to_string(),
+                content: "Hello, write a short poem about a gummy bear, in 100 words".to_string(),
             },
         ],
         temperature: 1.0, 
@@ -49,31 +51,14 @@ pub async fn call_nvidia(api_key: &str) -> Result<(), HarnessError>{
         // get the bytes
         let bytes = chunk_result?;
         // print the raw chunks as they arrive 
-        let text  = std::str::from_utf8(&bytes)?; 
-        // chunks could have multiple SSE lines together separated by new line 
-        for line in text.lines() {
-            let line = line.trim();
-            
-            // skip if line is empty or the final [DONE] signal 
-            if line.is_empty() || line == "data: [DONE]"{
-                continue;
-            }
+        let content  = std::str::from_utf8(&bytes)?; 
 
-            // extract json from the line after "data: " (normal SSE structure)
-            if let Some(json_str) = line.strip_prefix("data: "){
-                // deserialize into our struct 
-                if let Ok(chunk) = serde_json::from_str::<response_payload::ChatCompletionChunk>(json_str) {
-                    // if content exists - print it without the new line 
-                    if let Some(content) = chunk.choices.get(0).and_then(|c| c.delta.content.as_ref()){
-                        print!("{}", content);
-
-                        // flush stdout so tokens don't sit buffered in terminal 
-                        use std::io::{self, Write};
-                        let _ = io::stdout().flush();
-                    }
-                }
-            }
+        // parse this streamed congtent and print the extracted tokens in real time (freeing the buffer) 
+        if let Some(text) = parse_text_stream(content)? {
+            print!("{}", text);
+            std::io::stdout().flush().unwrap();
         }
+
     }
     // need to return () wrapped in Ok (function signature)
     Ok(())
