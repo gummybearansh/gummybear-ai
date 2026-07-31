@@ -56,7 +56,7 @@ pub async fn call_nvidia(api_key: &str) -> Result<(), HarnessError>{
         // parse this streamed congtent and print the extracted tokens in real time (freeing the buffer) 
         if let Some(text) = parse_text_stream(content)? {
             print!("{}", text);
-            std::io::stdout().flush().unwrap();
+            std::io::stdout().flush()?;
         }
 
     }

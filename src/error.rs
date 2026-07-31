@@ -13,5 +13,9 @@ pub enum HarnessError {
 
     
     #[error("Error deserializing json into struct: {0}")]
-    SerdeError(#[from] serde_json::Error)
+    SerdeError(#[from] serde_json::Error),
+
+    #[error("Could not flush to terminal: {0}")]
+    FlushError(#[from] std::io::Error)
+    
 }
