@@ -2,7 +2,7 @@ mod request_payload;
 mod response_payload;
 mod parser;
 
-use crate::{client::parser::parse_text_stream, error::HarnessError};
+use crate::{client::parser::{UniversalParser, parse_text_stream}, error::HarnessError};
 use request_payload::{NvidiaRequest, Message, ChatTemplateKwargs};
 use futures_util::StreamExt;
 use std::io::Write; // trait to be in scope so that i can use the flush() method it implements
@@ -19,7 +19,7 @@ pub async fn call_nvidia(api_key: &str) -> Result<(), HarnessError>{
         messages: vec![
             Message {
                 role: "user".to_string(),
-                content: "Hello, write a short poem about a gummy bear, in 100 words".to_string(),
+                content: "You are a system tester, say Hello, then output exactly <READ>sandbox.txt</READ>, then say goodbye".to_string(),
             },
         ],
         temperature: 1.0, 
@@ -45,6 +45,7 @@ pub async fn call_nvidia(api_key: &str) -> Result<(), HarnessError>{
 
     // get the stream of bytes from the response 
     let mut stream = response.bytes_stream();
+    let mut parser = UniversalParser::new();
 
     // loop over the chunks asynchronously 
     while let Some(chunk_result) = stream.next().await {
@@ -55,8 +56,22 @@ pub async fn call_nvidia(api_key: &str) -> Result<(), HarnessError>{
 
         // parse this streamed congtent and print the extracted tokens in real time (freeing the buffer) 
         if let Some(text) = parse_text_stream(content)? {
-            print!("{}", text);
-            std::io::stdout().flush()?;
+            // feed the tokens to our state machine and get the evnts 
+            let events = parser.push_token(&text);
+
+            // consume the events 
+            for event in events {
+                match event {
+                    parser::StreamEvent::Printable(safe_text) => {
+                        print!("{}", safe_text);
+                        std::io::stdout().flush()?;
+                    }
+                    parser::StreamEvent::ToolTrigger { name, payload } => {
+                        // the parser intercepted an event
+                        println!("\n\n[⚙️ TOOL INTERCEPTED] Name: {}, Payload: {}\n", name, payload);
+                    }
+                }
+            }
         }
 
     }
