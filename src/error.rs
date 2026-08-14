@@ -19,4 +19,7 @@ pub enum HarnessError {
     
     #[error("Patch failed: Could not find search block in the target file")]
     PatchFailed,
+
+    #[error("Unknown tool requested by LLM, {0}")]
+    UnknownTool(String)
 }

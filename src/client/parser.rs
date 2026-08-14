@@ -1,5 +1,3 @@
-use futures_util::stream_select;
-
 use crate::{client::response_payload, error::HarnessError};
 
 // state / Label Enum
@@ -8,8 +6,7 @@ pub enum ParserState {
     Chatting, // LLM talking normally
     ReadingFile, // saw <READ> and are waiting for file path 
     ExecutingCommand, // saw <CMD> and are waiting for terminal command 
-    PatchingSearch, // saw <SEARCH> and are waiting for old code 
-    PatchingReplace, // saw <REPLACE> and are waiting for new code
+    PatchingFile, // saw <Patch> and are waiting for old code 
 }
 
 // Event / Output Enum 
@@ -42,7 +39,7 @@ impl UniversalParser {
     // bouncer that handles the streaming tokens and decides what to do with them
     pub fn push_token(&mut self, token: &str) -> Vec<StreamEvent> {
         let mut events = Vec::new();
-        
+
         // add the incoming chunk from the network
         self.stream_response.push_str(token);
 
@@ -52,7 +49,7 @@ impl UniversalParser {
             let should_continue = match self.state {
                 // if helper function returns true - we loop again, if false we break
                 ParserState::Chatting => self.handle_chatting(&mut events),
-                
+
                 // for any of the payload states - we can have one universal helper 
                 _ => self.handle_payload(&mut events)
             };
@@ -70,8 +67,7 @@ impl UniversalParser {
         let supported_tags = [
             ("<READ>", ParserState::ReadingFile),
             ("<CMD>", ParserState::ExecutingCommand),
-            ("<SEARCH>", ParserState::PatchingSearch),
-            ("<REPLACE>", ParserState::PatchingReplace),
+            ("<PATCH>", ParserState::PatchingFile),
         ];
 
         let mut matched_tag = None;
@@ -128,8 +124,7 @@ impl UniversalParser {
         let (closing_tag, tool_name) = match self.state {
             ParserState::ReadingFile => ("</READ>", "READ"),
             ParserState::ExecutingCommand => ("</CMD>", "CMD"),
-            ParserState::PatchingSearch => ("</SEARCH>", "SEARCH"),
-            ParserState::PatchingReplace => ("</REPLACE>", "REPLACE"),
+            ParserState::PatchingFile => ("</PATCH>", "PATCH"),
             _ => return false, // chatting is handled separately this is a safe fallback
         };
 
@@ -192,8 +187,21 @@ pub fn parse_text_stream(text: &str) -> Result<Option<String>, HarnessError> {
         if let Some(json_str) = line.strip_prefix("data: ") {
             let chunk = serde_json::from_str::<response_payload::ChatCompletionChunk>(json_str)?;
 
-            if let Some(content) = chunk.choices.get(0).and_then(|c| c.delta.content.as_ref()) {
-                extracted_tokens.push_str(content);
+            if let Some(choices) = chunk.choices {
+                if let Some(choice) = choices.get(0) {
+                    // chcek for reasoning
+                    if let Some(reasoning) = &choice.delta.reasoning_content {
+                        // Let's wrap reasoning in standard terminal ANSI codes to make it GREY/DIM
+                        // \x1b[2m starts dim text, \x1b[0m resets it.
+                        let formatted_reasoning = format!("\x1b[2m{}\x1b[0m", reasoning);
+                        extracted_tokens.push_str(&formatted_reasoning);
+                    }
+
+                    //Check for actual speech/XML tags
+                    if let Some(content) = &choice.delta.content {
+                        extracted_tokens.push_str(content);
+                    }
+                }
             }
         }
     }

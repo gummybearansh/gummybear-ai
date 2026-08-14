@@ -1,8 +1,8 @@
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 // macro will automatically write the extra code to convert this struct into JSON bytes using serde crate
 // structure for individual chat messages
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Message {
     pub role: String, 
     pub content: String

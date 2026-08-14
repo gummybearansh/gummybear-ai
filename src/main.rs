@@ -25,14 +25,9 @@ async fn main() {
     //     }
     // }
     
-
-    match client::call_nvidia(&config.api_key).await {
-        Ok(_) => println!("\n\nTask finished successfully"), 
-
-        Err (e) => {
-            eprintln!("{}", e);
-
-            std::process::exit(1);
-        }
+    let mut agent = agent::Agent::new(config.api_key);
+    match agent.run().await {
+        Ok(()) => println!("\n\nAgent concluded"),
+        Err(e) => println!("{}", e)
     }
 }
